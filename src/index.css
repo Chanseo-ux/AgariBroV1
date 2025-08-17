@@ -1,0 +1,59 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* ---------- Animated soft gradient (no near-white) ---------- */
+@keyframes agariGradient {
+  0% {
+    background: radial-gradient(1200px 800px at 12% 12%,
+      #aee6ff 0%, #9ecbff 38%, #b5aaff 70%, #ffd6e0 100%);
+  }
+  33% {
+    background: radial-gradient(1200px 800px at 82% 22%,
+      #c2ffd6 0%, #aee6ff 35%, #9ecbff 68%, #b5aaff 100%);
+  }
+  66% {
+    background: radial-gradient(1200px 800px at 24% 82%,
+      #ffd6e0 0%, #c2ffd6 35%, #aee6ff 68%, #9ecbff 100%);
+  }
+  100% {
+    background: radial-gradient(1200px 800px at 12% 12%,
+      #aee6ff 0%, #9ecbff 38%, #b5aaff 70%, #ffd6e0 100%);
+  }
+}
+
+.agari-gradient {
+  background:
+    radial-gradient(60% 80% at 20% 20%,
+      rgba(174,230,255,0.85), rgba(158,203,255,0.35) 60%, transparent 72%),
+    radial-gradient(80% 60% at 80% 70%,
+      rgba(194,255,214,0.75), rgba(181,170,255,0.35) 60%, transparent 76%),
+    radial-gradient(70% 70% at 40% 80%,
+      rgba(255,214,224,0.60), rgba(181,170,255,0.35) 60%, transparent 76%);
+  background-size: 200% 200%;
+  background-repeat: no-repeat;
+  animation: agariShift 120s ease-in-out infinite alternate;
+}
+
+@keyframes agariShift {
+  0%   { background-position: 0% 0%, 50% 50%, 100% 100%; }
+  50%  { background-position: 55% 60%, 0% 100%, 60% 0%; }
+  100% { background-position: 100% 100%, 50% 0%, 0% 60%; }
+}
+
+/* waveform internal stripes */
+@keyframes waveScroll {
+  0% { background-position: 0% 0; }
+  100% { background-position: -200% 0; }
+}
+
+/* caret blink for time editor */
+@keyframes caretBlink {
+  0%, 49% { opacity: 1; }
+  50%,100% { opacity: 0; }
+}
+.agari-caret {
+  width: 2px;
+  background: currentColor;
+  animation: caretBlink 1s step-end infinite;
+}
