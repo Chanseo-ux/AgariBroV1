@@ -5,14 +5,11 @@ import { AnimatePresence, motion } from "framer-motion";
  * MusicPlayer — JSX (no shuffle) + Framer Motion
  * - Auto-advance strictly sequential (wrap at end)
  * - Repeat button toggles Repeat One (loop AFTER finish; no restart on press)
- * - Click outside the music player when on Songs screen → go back to Playlists (playback continues)
- * - Smooth, springy screen transitions (Framer Motion) + lively row animations
- * - Songs list scrolls past the last row (extra bottom/right padding + spacer)
+ * - Click outside the music player when on Songs screen → back to Playlists (playback continues)
+ * - Smooth springy transitions + lively row animations
+ * - Songs list scrolls past the last row
  * - Search YouTube (VITE_YT_API_KEY required)
  * - LocalStorage persistence; YT Iframe API safe guards
- *
- * Note: ensure you have framer-motion installed.
- *   npm i framer-motion
  */
 
 const STORAGE = {
@@ -142,12 +139,6 @@ export default function MusicPlayer() {
     }
   };
 
-  useEffect(() => {
-    const onKey = (e) => { if (e.key === "Escape") { if (showResults) setShowResults(false); else if (screen === "songs") goPlaylists(); } };
-    window.addEventListener("keydown", onKey);
-    return () => window.removeEventListener("keydown", onKey);
-  }, [screen, showResults]);
-
   /* ---------- YouTube Iframe API ---------- */
   const rootRef = useRef(null);          // whole player root (for outside click detect)
   const containerRef = useRef(null);     // YT iframe container
@@ -173,7 +164,16 @@ export default function MusicPlayer() {
       width: "0",
       playerVars: { rel: 0, modestbranding: 1 },
       events: {
-        onReady: (e) => { e.target.setVolume?.(volume); },
+        onReady: (e) => {
+          e.target.setVolume?.(volume);
+          // Fix: keep hidden iframe from stealing keyboard
+          const iframe = e.target.getIframe?.();
+          if (iframe) {
+            iframe.setAttribute("tabindex", "-1");
+            iframe.setAttribute("aria-hidden", "true");
+            try { iframe.blur(); } catch {}
+          }
+        },
         onStateChange: (e) => {
           const Y = window.YT?.PlayerState;
           if (!Y) return;
@@ -244,7 +244,7 @@ export default function MusicPlayer() {
     return `${String(m).padStart(2, "0")}:${String(sec).padStart(2, "0")}`;
   };
 
-  /* ---------- Playback + repeat, atomic advance ---------- */
+  /* ---------- Playback + repeat ---------- */
   const togglePlay = () => {
     const p = playerRef.current;
     if (!p) { if (playlist.length) setCurrentIdx((prev) => Math.max(0, prev ?? 0)); return; }
@@ -277,20 +277,15 @@ export default function MusicPlayer() {
     } catch {}
   };
 
-  // Double-advance guard (for sequential path only)
+  // Double-advance guard
   const lastAdvanceRef = useRef(0);
 
   const handleEnded = () => {
     if (!playlist.length) return;
-    if (repeatMode === "one") { // loop same track
-      restartCurrent();
-      return;
-    }
+    if (repeatMode === "one") { restartCurrent(); return; }
     const now = Date.now();
-    if (now - lastAdvanceRef.current < 700) return; // ignore duplicate ENDED bursts
+    if (now - lastAdvanceRef.current < 700) return;
     lastAdvanceRef.current = now;
-
-    // advance by exactly one using functional state to avoid stale closures
     setCurrentIdx((prev) => {
       const n = playlist.length;
       if (!Number.isInteger(prev) || prev < 0) return n > 0 ? 0 : -1;
@@ -298,10 +293,8 @@ export default function MusicPlayer() {
     });
   };
 
-  /* ---------- Repeat control (toggle only, no restart on press) ---------- */
   const toggleRepeatOne = () => {
     setRepeatMode(repeatMode === "one" ? "off" : "one");
-    // Do NOT restart here; looping happens only when ENDED fires.
   };
 
   /* ---------- Playlist CRUD ---------- */
@@ -399,14 +392,14 @@ export default function MusicPlayer() {
 
   const [openRow, setOpenRow] = useState(-1);
 
-  /* ---------- Height sync (slightly taller for scrolling) ---------- */
+  /* ---------- Height sync ---------- */
   useEffect(() => {
     const el = rootRef.current;
     if (!el) return;
 
     const prev = el ? el.previousElementSibling : null;
     const apply = () => {
-      const min = 480; // taller so last row can scroll above bottom
+      const min = 480;
       if (prev) {
         const h = prev.getBoundingClientRect().height;
         if (h > 0) { el.style.height = `${Math.max(h, min)}px`; return; }
@@ -440,14 +433,12 @@ export default function MusicPlayer() {
     const onUp = (e) => {
       if (screen !== "songs") return;
       if (e.button !== 0) return;
-      // ignore if any modal is open
       if (confirmDel.open || confirmSongDel.open || confirmClear.open) return;
 
       const root = rootRef.current;
       const target = e.target;
-      if (root && root.contains(target)) return; // click was inside player
+      if (root && root.contains(target)) return;
 
-      // movement guard
       const dx = Math.abs((e.clientX ?? 0) - downRef.current.x);
       const dy = Math.abs((e.clientY ?? 0) - downRef.current.y);
       if (dx > 6 || dy > 6) return;
@@ -455,7 +446,6 @@ export default function MusicPlayer() {
       goPlaylists();
     };
 
-    // capture phase to reliably detect outside clicks
     document.addEventListener("pointerdown", onDown, true);
     document.addEventListener("pointerup", onUp, true);
     return () => {
@@ -463,6 +453,23 @@ export default function MusicPlayer() {
       document.removeEventListener("pointerup", onUp, true);
     };
   }, [screen, confirmDel.open, confirmSongDel.open, confirmClear.open]);
+
+  /* ---------- Global key handler (ignore when typing) ---------- */
+  useEffect(() => {
+    const onKey = (e) => {
+      // Ignore ALL globals while typing in input/textarea/contentEditable
+      const el = document.activeElement;
+      const typing = el && (el.tagName === "INPUT" || el.tagName === "TEXTAREA" || el.isContentEditable);
+      if (typing) return;
+
+      if (e.key === "Escape") {
+        if (showResults) setShowResults(false);
+        else if (screen === "songs") goPlaylists();
+      }
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [screen, showResults]);
 
   /* ---------- Framer Motion variants ---------- */
   const screenVariants = {
@@ -601,7 +608,7 @@ export default function MusicPlayer() {
                       <span className="text-[11px] text-gray-600">Press Play to start.</span>
                     )}
 
-                    {/* Repeat: toggle OFF ⇄ ONE (no restart on press) */}
+                    {/* Repeat: toggle OFF ⇄ ONE */}
                     <button
                       onClick={toggleRepeatOne}
                       className={`px-2 py-1 text-xs border rounded transition-colors duration-200 ${
@@ -631,6 +638,14 @@ export default function MusicPlayer() {
                       placeholder="Search YouTube… (e.g., K-pop, lo-fi, artist name)"
                       value={query}
                       onChange={(e) => setQuery(e.target.value)}
+                      // Keep typing keys (letters/digits/space) from bubbling to page/iframe
+                      onKeyDown={(e) => {
+                        if (!e.ctrlKey && !e.metaKey && !e.altKey) {
+                          e.stopPropagation();
+                        }
+                      }}
+                      autoFocus
+                      enterKeyHint="search"
                     />
                     <button type="submit" disabled={loading} className="px-3 py-2 text-sm border rounded hover:bg-gray-100 disabled:opacity-60">
                       {loading ? "Searching…" : "Search"}
@@ -683,7 +698,7 @@ export default function MusicPlayer() {
                   {err && <div className="text-xs text-red-600">{err}</div>}
                 </div>
 
-                {/* Songs list (extra bottom/right padding for comfortable scrolling) */}
+                {/* Songs list */}
                 <div className="flex-1 min-h-0 overflow-y-auto overscroll-contain p-3 pb-32 pr-3 bg-transparent">
                   <div className="border rounded">
                     <div className="px-3 py-2 border-b text-xs text-gray-500">Songs</div>
@@ -696,10 +711,6 @@ export default function MusicPlayer() {
                           const dragging = i === dragIndex;
                           const over = i === dragOverIndex;
                           const rowOpen = openRow === i;
-
-                          const displayTime = seeking && active && pendingSeekRef.current != null
-                            ? pendingSeekRef.current
-                            : curTime;
 
                           return (
                             <motion.li
@@ -789,7 +800,7 @@ export default function MusicPlayer() {
                                       />
                                     </div>
 
-                                    {/* Transport + Progress (slider) */}
+                                    {/* Transport + Progress */}
                                     <div className="ml-auto flex items-center gap-3 w-full max-w-[560px]">
                                       <button
                                         className="px-2 py-1 text-xs border rounded hover:bg-gray-100 select-none touch-none"
@@ -812,21 +823,14 @@ export default function MusicPlayer() {
                                         disabled={!active || duration <= 0}
                                         className="flex-1 cursor-pointer select-none touch-none"
                                         title="Seek"
-                                        onPointerDown={(e) => {
-                                          if (!active || duration <= 0) return;
-                                          setSeeking(true);
-                                        }}
-                                        onChange={(e) => {
-                                          if (!active || duration <= 0) return;
-                                          pendingSeekRef.current = Number(e.target.value);
-                                        }}
-                                        onPointerUp={(e) => {
+                                        onPointerDown={() => { if (active && duration > 0) setSeeking(true); }}
+                                        onChange={(e) => { if (active && duration > 0) pendingSeekRef.current = Number(e.target.value); }}
+                                        onPointerUp={() => {
                                           if (!active || duration <= 0) return;
                                           if (pendingSeekRef.current != null) {
                                             const p = playerRef.current;
                                             const dur = duration || p?.getDuration?.() || 0;
                                             const target = Math.max(0, Math.min(pendingSeekRef.current, dur));
-                                            // Avoid manual double-advance: seek near end and let a single ENDED fire naturally
                                             if (dur - target <= 1.0) {
                                               p?.seekTo?.(Math.max(0, dur - 0.2), true);
                                             } else {
@@ -851,7 +855,6 @@ export default function MusicPlayer() {
                         })}
                       </ul>
                     )}
-                    {/* end spacer so you can scroll past the last item comfortably */}
                     <div className="h-12" />
                   </div>
                 </div>
